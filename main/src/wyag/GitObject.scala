@@ -1,3 +1,5 @@
+import ammonite.ops._
+
 sealed trait GitObjectType
 
 object GitObjectType {
@@ -28,11 +30,43 @@ class BlobObj(val content: String) extends GitObject[GitObjectType.Blob.type, St
   def typ = GitObjectType.Blob
 }
 
+class TreeObj(val content: List[TreeObj.TreeLeaf]) extends GitObject[GitObjectType.Tree.type, List[TreeObj.TreeLeaf]] {
+  def typ = GitObjectType.Tree
+}
+
+object TreeObj {
+  case class TreeLeaf(mode: String, path: String, sha1: String)
+
+  def apply(rawContent: Array[Byte]): TreeObj = {
+    def loop(array: Array[Byte]): List[Array[Byte]] = {
+      // for the first line, array.indexOf(0) return 0, so there is a workaround
+      val endOfLine = array.drop(1).indexOf(0) + 22
+      if (array.lift(endOfLine).isDefined)
+        array.take(endOfLine) :: loop(array.drop(endOfLine))
+      else array :: Nil
+    }
+    val lines = loop(rawContent).map { line =>
+        val mode = StringUtils.bytesToString(line.takeWhile(_ != ' '.toByte))
+        val path = StringUtils.bytesToString(line.drop(mode.length + 1).takeWhile(_ != 0))
+        val sha1 = StringUtils.convertBytesToHex(line.takeRight(20))
+        TreeLeaf(mode, path, sha1)
+      }
+    new TreeObj(lines)
+  }
+
+}
+
 object GitObject {
   def apply(content: Array[Byte], typ: GitObjectType): GitObject[_, _] = typ match {
     case GitObjectType.Blob =>
       new BlobObj(StringUtils.bytesToString(content))
-    case _ =>
+    case GitObjectType.Tree =>
+      TreeObj(content)
+    case GitObjectType.Tag =>
+      println("tag unimplemented")
+      ???
+    case GitObjectType.Commit =>
+      println("commit unimplemented")
       ???
   }
 }

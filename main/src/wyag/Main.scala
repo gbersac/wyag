@@ -18,6 +18,20 @@ object Executor {
 
     case CLICommand.HashObject(file: Path, typ: Option[GitObjectType], write: Boolean) =>
       ???
+
+    case CLICommand.LsTree(treeId: String) =>
+      for {
+        repo <- findRepo
+        content <- repo.findObject(treeId)
+          .flatMap {
+            case tree: TreeObj =>
+              Right(tree.content
+                .map(line => s"${line.mode} ${line.sha1} ${line.path}")
+                .mkString("\n")
+              )
+            case _ => WyagError.l(s"Object $treeId is not a tree")
+          }
+      } yield content
   }
 
   private def findRepo: Either[WyagError, GitRepository] = GitRepository.findRepo()
