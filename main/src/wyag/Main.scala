@@ -16,9 +16,6 @@ object Executor {
 
       } yield content.toString
 
-    case CLICommand.HashObject(file: Path, typ: Option[GitObjectType], write: Boolean) =>
-      ???
-
     case CLICommand.LsTree(treeId: String) =>
       for {
         repo <- findRepo

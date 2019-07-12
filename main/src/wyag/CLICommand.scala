@@ -10,7 +10,6 @@ object CLICommand {
 
   case class Init(p: Option[Path]) extends CLICommand
   case class CatFile(typ: GitObjectType, name: String) extends CLICommand
-  case class HashObject(file: Path, typ: Option[GitObjectType], write: Boolean) extends CLICommand
   case class LsTree(treeId: String) extends CLICommand
 
   def argsParse(args: Seq[String]): Either[WyagError, CLICommand] = {
@@ -28,12 +27,6 @@ object CLICommand {
           case "cat-file" =>
             tail match {
               case GitObjectType(typ) :: objName :: Nil => Right(CatFile(typ, objName))
-              case _ => WyagError.l("")
-            }
-
-          case "hash-object" =>
-            tail match {
-              case PathS(p) :: Nil => Right(HashObject(p, None, false))
               case _ => WyagError.l("")
             }
 

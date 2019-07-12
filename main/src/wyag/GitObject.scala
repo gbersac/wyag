@@ -39,8 +39,7 @@ object TreeObj {
 
   def apply(rawContent: Array[Byte]): TreeObj = {
     def loop(array: Array[Byte]): List[Array[Byte]] = {
-      // for the first line, array.indexOf(0) return 0, so there is a workaround
-      val endOfLine = array.drop(1).indexOf(0) + 22
+      val endOfLine = array.indexOf(0) + 21
       if (array.lift(endOfLine).isDefined)
         array.take(endOfLine) :: loop(array.drop(endOfLine))
       else array :: Nil
