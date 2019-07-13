@@ -20,17 +20,16 @@ object GitObjectType {
   def unapply(typ: String): Option[GitObjectType] = apply(typ).toOption
 }
 
-sealed trait GitObject[TYPE <: GitObjectType, CONTENT_TYPE] {
+sealed trait GitObject[TYPE <: GitObjectType] {
   def typ: TYPE
-  def content: CONTENT_TYPE
 }
 
 // TODO should be Array[Byte]
-class BlobObj(val content: String) extends GitObject[GitObjectType.Blob.type, String] {
+class BlobObj(val content: String) extends GitObject[GitObjectType.Blob.type] {
   def typ = GitObjectType.Blob
 }
 
-class TreeObj(val content: List[TreeObj.TreeLeaf]) extends GitObject[GitObjectType.Tree.type, List[TreeObj.TreeLeaf]] {
+class TreeObj(val content: List[TreeObj.TreeLeaf]) extends GitObject[GitObjectType.Tree.type] {
   def typ = GitObjectType.Tree
 }
 
@@ -55,17 +54,65 @@ object TreeObj {
 
 }
 
+case class CommitObj(
+  tree: String,
+  parent: List[String],
+  author: String,
+  committer: String,
+  description: String,
+) extends GitObject[GitObjectType.Commit.type] {
+  def typ = GitObjectType.Commit
+}
+
+object CommitObj {
+  private val beginPGPSignature: String = "gpgsig -----BEGIN PGP SIGNATURE-----"
+  private val endPGPSignature: String = "-----END PGP SIGNATURE-----"
+
+  def apply(rawContent: Array[Byte]): Either[WyagError, CommitObj] = {
+    def isKeyValue(s: String): Boolean = s.startsWith("tree") || s.startsWith("parent") || s.startsWith("author") || s.startsWith("committer")
+    val contentLines = StringUtils.bytesToString(rawContent).split("\n")
+
+    // key values items
+    def loop(contentLines: List[String]): List[(String, String)] =  contentLines match {
+      case head :: tail if isKeyValue(head) =>
+        head.split(" ", 2).toList match {
+          case key :: value :: Nil => List((key, value)) ++ loop(tail)
+          case _ => loop(tail)
+        }
+      case _ => Nil
+    }
+    val kv: List[(String, String)] = loop(contentLines.toList)
+
+    for {
+      tree <- kv.find(_._1 == "tree").map(_._2).toRight(WyagError("No tree header"))
+      author <- kv.find(_._1 == "author").map(_._2).toRight(WyagError("No author header"))
+      committer <- kv.find(_._1 == "committer").map(_._2).toRight(WyagError("No committer header"))
+      description <- Right(
+        contentLines.drop(contentLines.indexOf(endPGPSignature) + 1)
+          .filterNot(_.trim.isEmpty)
+          .lastOption
+          .getOrElse("")
+      )
+    } yield new CommitObj(
+      tree = tree,
+      parent = kv.filter(_._1 == "parent").map(_._2),
+      author = author,
+      committer = committer,
+      description = description,
+    )
+  }
+}
+
 object GitObject {
-  def apply(content: Array[Byte], typ: GitObjectType): GitObject[_, _] = typ match {
+  def apply(content: Array[Byte], typ: GitObjectType): Either[WyagError, GitObject[_]] = typ match {
     case GitObjectType.Blob =>
-      new BlobObj(StringUtils.bytesToString(content))
+      Right(new BlobObj(StringUtils.bytesToString(content)))
     case GitObjectType.Tree =>
-      TreeObj(content)
+      Right(TreeObj(content))
     case GitObjectType.Tag =>
       println("tag unimplemented")
       ???
     case GitObjectType.Commit =>
-      println("commit unimplemented")
-      ???
+      CommitObj(content)
   }
 }

@@ -6,7 +6,7 @@ import ammonite.ops._
  */
 class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
 
-  def findObject(sha: String): Either[WyagError, GitObject[_, _]] =
+  def findObject(sha: String): Either[WyagError, GitObject[_]] =
     for {
 
       raw <- {
@@ -31,7 +31,9 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
         else WyagError.l(s"Object size is $realSize instead of $size")
       }
 
-    } yield GitObject(raw.drop(endOfSize + 1), typ)
+      obj <- GitObject(raw.drop(endOfSize + 1), typ)
+
+    } yield obj
 
 }
 

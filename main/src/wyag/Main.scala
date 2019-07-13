@@ -8,13 +8,12 @@ object Executor {
     case CLICommand.CatFile(typ: GitObjectType, name: String) =>
       for {
         repo <- GitRepository.findRepo()
-
-        content <- {
-          val obj = repo.findObject(name)
-          obj.map(o => o.content)
+        obj <- repo.findObject(name)
+        blob <- obj match {
+          case b: BlobObj => Right(b)
+          case _ => WyagError.l("object should be a blob")
         }
-
-      } yield content.toString
+      } yield blob.content
 
     case CLICommand.LsTree(treeId: String) =>
       for {
@@ -28,7 +27,19 @@ object Executor {
               )
             case _ => WyagError.l(s"Object $treeId is not a tree")
           }
+
       } yield content
+
+    case CLICommand.Checkout(commitHash, outputDirectory) =>
+      for {
+        repo <- findRepo
+        obj <- repo.findObject(commitHash)
+        commit <- obj match {
+          case b: CommitObj => Right(b)
+          case _ => WyagError.l("object should be a commit")
+        }
+      } yield commit.toString
+
   }
 
   private def findRepo: Either[WyagError, GitRepository] = GitRepository.findRepo()

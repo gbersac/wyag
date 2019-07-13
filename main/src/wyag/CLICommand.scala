@@ -11,6 +11,7 @@ object CLICommand {
   case class Init(p: Option[Path]) extends CLICommand
   case class CatFile(typ: GitObjectType, name: String) extends CLICommand
   case class LsTree(treeId: String) extends CLICommand
+  case class Checkout(commitHash: String, outputDirectory: String) extends CLICommand
 
   def argsParse(args: Seq[String]): Either[WyagError, CLICommand] = {
     args.toList match {
@@ -34,6 +35,12 @@ object CLICommand {
             tail match {
               case treeId :: Nil => Right(LsTree(treeId))
               case _ => WyagError.l("usage ls-tree treeId")
+            }
+
+          case "checkout" =>
+            tail match {
+              case commitHash :: outputDirectory :: Nil => Right(Checkout(commitHash, outputDirectory))
+              case _ => WyagError.l("usage checkout commitHash outputDirectory")
             }
 
           case _ =>  WyagError.l(s"Unknown command $subCommand")
