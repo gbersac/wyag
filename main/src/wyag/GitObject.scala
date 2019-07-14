@@ -87,13 +87,9 @@ case class CommitObj(
   def typ = GitObjectType.Commit
 
   def writeTo(p: Path, repo: GitRepository): Either[WyagError, Unit] = {
-    println("in CommitObj.writeTo", tree)
     for {
       obj <- repo.findObject(tree)
-      tree <- obj match {
-        case t: TreeObj => t.writeTo(p, repo)
-        case _ => WyagError.l(s"Object $tree is not of type commit")
-      }
+      tree <- GitObject.isObjectTree(obj)
     } yield ()
   }
 }
@@ -151,9 +147,19 @@ object GitObject {
   }
 
   import scala.reflect.runtime.universe._
-  def isObjectOfType[TYPE <: GitObject[_] : TypeTag](obj: GitObject[_]): Either[WyagError, TYPE] = obj match {
-    case obj: TYPE if typeOf[TYPE] =:= typeOf[obj.type] => Right(obj)
-    case _ => WyagError.l(s"Object is not of expected type")
+  def isObjectTree(obj: GitObject[_]): Either[WyagError, TreeObj] = obj match {
+    case obj: TreeObj if typeOf[obj.type] =:= typeOf[TreeObj.type] => Right(obj)
+    case _ => WyagError.l(s"Object is not of expected type tree")
+  }
+
+  def isObjectBlob(obj: GitObject[_]): Either[WyagError, BlobObj] = obj match {
+    case obj: BlobObj if typeOf[obj.type] =:= typeOf[BlobObj] => Right(obj)
+    case _ => WyagError.l(s"Object is not of expected type tree")
+  }
+
+  def isObjectCommit(obj: GitObject[_]): Either[WyagError, CommitObj] = obj match {
+    case obj: CommitObj if typeOf[obj.type] =:= typeOf[CommitObj] => Right(obj)
+    case _ => WyagError.l(s"Object is not of expected type tree")
   }
 
 }

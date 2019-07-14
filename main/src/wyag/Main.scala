@@ -2,9 +2,11 @@ import ammonite.ops._
 
 object Executor {
   def execute(command: CLICommand): Either[WyagError, String] = command match {
+
     case CLICommand.Init(p) =>
       val path = p.getOrElse(pwd)
       GitRepository.createRepo(path).map(_ => "Successfully initiated repo")
+
     case CLICommand.CatFile(typ: GitObjectType, name: String) =>
       for {
         repo <- GitRepository.findRepo()
@@ -19,25 +21,14 @@ object Executor {
       for {
         repo <- findRepo
         content <- repo.findObject(treeId)
-          .flatMap {
-            case tree: TreeObj =>
-              Right(tree.content
-                .map(line => s"${line.mode} ${line.sha1} ${line.path}")
-                .mkString("\n")
-              )
-            case _ => WyagError.l(s"Object $treeId is not a tree")
-          }
-
-      } yield content
+        tree <- GitObject.isObjectTree(content)
+      } yield tree.content.map(line => s"${line.mode} ${line.sha1} ${line.path}").mkString("\n")
 
     case CLICommand.Checkout(commitHash, outputDirectory) =>
       for {
         repo <- findRepo
         obj <- repo.findObject(commitHash)
-        commit <- obj match {
-          case b: CommitObj => Right(b)
-          case _ => WyagError.l("object should be a commit")
-        }
+        commit <- GitObject.isObjectCommit(obj)
         _ <- if (exists(outputDirectory / up) && (!exists(outputDirectory) || ls(outputDirectory).isEmpty)) {
           if (!exists(outputDirectory)) mkdir(outputDirectory) else ()
           commit.writeTo(outputDirectory, repo)
