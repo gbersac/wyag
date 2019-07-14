@@ -38,6 +38,10 @@ object Executor {
           case b: CommitObj => Right(b)
           case _ => WyagError.l("object should be a commit")
         }
+        _ <- if (exists(outputDirectory / up) && (!exists(outputDirectory) || ls(outputDirectory).isEmpty)) {
+          if (!exists(outputDirectory)) mkdir(outputDirectory) else ()
+          commit.writeTo(outputDirectory, repo)
+        } else WyagError.l(s"$outputDirectory cannot be created or is not empty")
       } yield commit.toString
 
   }

@@ -31,6 +31,29 @@ class BlobObj(val content: String) extends GitObject[GitObjectType.Blob.type] {
 
 class TreeObj(val content: List[TreeObj.TreeLeaf]) extends GitObject[GitObjectType.Tree.type] {
   def typ = GitObjectType.Tree
+
+  def writeTo(path: Path, repo: GitRepository): Either[WyagError, Unit] = {
+    println(content)
+    ListUtils.sequenceE(
+      content.map { leaf =>
+        for {
+          leafObj <- repo.findObject(leaf.sha1)
+          _ <- leafObj match {
+            case t: TreeObj =>
+              println("found tree obj", leaf.path)
+              val dirPath = path / leaf.path
+              if (!exists(dirPath)) mkdir(dirPath) else ()
+              WyagError.tryCatch(t.writeTo(dirPath, repo), err => s"Cannot write tree: $err")
+            case blob: BlobObj =>
+              println("found blob obj", leaf.path)
+              WyagError.tryCatch(write(path / leaf.path, blob.content), err => s"Cannot write blob: $err")
+            case o => WyagError.l(s"Could not write object of type ${o.typ}")
+          }
+        } yield ()
+      }
+    ).map(_ => ())
+  }
+
 }
 
 object TreeObj {
@@ -62,6 +85,17 @@ case class CommitObj(
   description: String,
 ) extends GitObject[GitObjectType.Commit.type] {
   def typ = GitObjectType.Commit
+
+  def writeTo(p: Path, repo: GitRepository): Either[WyagError, Unit] = {
+    println("in CommitObj.writeTo", tree)
+    for {
+      obj <- repo.findObject(tree)
+      tree <- obj match {
+        case t: TreeObj => t.writeTo(p, repo)
+        case _ => WyagError.l(s"Object $tree is not of type commit")
+      }
+    } yield ()
+  }
 }
 
 object CommitObj {
@@ -115,4 +149,11 @@ object GitObject {
     case GitObjectType.Commit =>
       CommitObj(content)
   }
+
+  import scala.reflect.runtime.universe._
+  def isObjectOfType[TYPE <: GitObject[_] : TypeTag](obj: GitObject[_]): Either[WyagError, TYPE] = obj match {
+    case obj: TYPE if typeOf[TYPE] =:= typeOf[obj.type] => Right(obj)
+    case _ => WyagError.l(s"Object is not of expected type")
+  }
+
 }
