@@ -31,7 +31,7 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
         else WyagError.l(s"Object size is $realSize instead of $size")
       }
 
-      obj <- GitObject(raw.drop(endOfSize + 1), typ)
+      obj <- GitObject(raw.drop(endOfSize + 1), typ, sha)
 
     } yield obj
 

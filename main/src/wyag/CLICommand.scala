@@ -8,10 +8,11 @@ sealed trait CLICommand
 
 object CLICommand {
 
-  case class Init(p: Option[Path]) extends CLICommand
-  case class CatFile(typ: GitObjectType, name: String) extends CLICommand
-  case class LsTree(treeId: String) extends CLICommand
-  case class Checkout(commitHash: String, outputDirectory: Path) extends CLICommand
+  case class  Init(p: Option[Path]) extends CLICommand
+  case class  CatFile(typ: GitObjectType, name: String) extends CLICommand
+  case class  LsTree(treeId: String) extends CLICommand
+  case class  Checkout(commitHash: String, outputDirectory: Path) extends CLICommand
+  case object ShowRef extends CLICommand
 
   def argsParse(args: Seq[String]): Either[WyagError, CLICommand] = {
     args.toList match {
@@ -42,6 +43,9 @@ object CLICommand {
               case commitHash :: PathS(outputDirectory) :: Nil => Right(Checkout(commitHash, outputDirectory))
               case _ => WyagError.l("usage checkout commitHash outputDirectory")
             }
+
+          case "show-ref" =>
+            Right(ShowRef)
 
           case _ =>  WyagError.l(s"Unknown command $subCommand")
         }

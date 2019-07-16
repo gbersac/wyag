@@ -21,19 +21,25 @@ object Executor {
       for {
         repo <- findRepo
         content <- repo.findObject(treeId)
-        tree <- GitObject.isObjectTree(content)
+        tree <- GitObject.asObjectTree(content)
       } yield tree.content.map(line => s"${line.mode} ${line.sha1} ${line.path}").mkString("\n")
 
     case CLICommand.Checkout(commitHash, outputDirectory) =>
       for {
         repo <- findRepo
         obj <- repo.findObject(commitHash)
-        commit <- GitObject.isObjectCommit(obj)
+        commit <- GitObject.asObjectCommit(obj)
         _ <- if (exists(outputDirectory / up) && (!exists(outputDirectory) || ls(outputDirectory).isEmpty)) {
           if (!exists(outputDirectory)) mkdir(outputDirectory) else ()
           commit.writeTo(outputDirectory, repo)
         } else WyagError.l(s"$outputDirectory cannot be created or is not empty")
       } yield commit.toString
+
+    case CLICommand.ShowRef =>
+      for {
+        repo <- findRepo
+        refs <- GitReference.all(repo)
+      } yield refs.map(ref => s"${ref.resolve.sha1} ${ref.path.relativeTo(repo.gitdir)}").mkString("\n")
 
   }
 

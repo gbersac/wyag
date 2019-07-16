@@ -1,3 +1,5 @@
+import ammonite.ops._
+
 object StringUtils {
   def bytesToString(bytes: Array[Byte]): String = bytes.map(_.toChar).mkString
 
@@ -15,4 +17,14 @@ object ListUtils {
     s.foldRight(Right(Nil): Either[A, List[B]]) {
       (e, acc) => for (xs <- acc.right; x <- e.right) yield x :: xs
     }
+}
+
+object PathUtils {
+  def readFile(path: Path): Either[WyagError, String] =
+    if (!exists(path))
+      WyagError.l(s"File $path does not exists.")
+    else if (!stat(path).isFile)
+      WyagError.l(s"File $path is a ${stat(path).fileType.toString.toLowerCase} not file.")
+    else
+      WyagError.tryCatch(read(path))
 }
