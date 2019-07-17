@@ -1,3 +1,5 @@
+import scala.util.Try
+
 import ammonite.ops._
 
 object Executor {
@@ -40,6 +42,19 @@ object Executor {
         repo <- findRepo
         refs <- GitReference.all(repo)
       } yield refs.map(ref => s"${ref.resolve.sha1} ${ref.path.relativeTo(repo.gitdir)}").mkString("\n")
+
+    case tagCommand: CLICommand.Tag =>
+      for {
+        repo <- findRepo
+        output <- {
+          if (tagCommand.readTags) Right(
+            Try(ls(repo.gitdir / "refs" / "tags")).getOrElse(List())
+              .map(_.last)
+              .mkString("\n")
+          )
+          else ???
+        }
+      } yield output
 
   }
 

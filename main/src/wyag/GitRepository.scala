@@ -1,4 +1,5 @@
 import ammonite.ops._
+import scala.math.BigInt
 
 /**
  * @param worktree root of the repo
@@ -34,6 +35,14 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
       obj <- GitObject(raw.drop(endOfSize + 1), typ, sha)
 
     } yield obj
+
+
+  /** Return the sha1 of the newly created object (if successful) */
+  def writeObject(typ: GitObjectType, content: Array[Byte]): Either[WyagError, String] = {
+    val header = typ.toByte ++ StringUtils.stringToBytes(" ") ++
+      BigInt(content.length).toByteArray ++ StringUtils.stringToBytes("\0")
+    ???
+  }
 
 }
 

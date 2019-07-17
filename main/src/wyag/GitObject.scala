@@ -1,6 +1,8 @@
 import ammonite.ops._
 
-sealed trait GitObjectType
+sealed trait GitObjectType {
+  def toByte: Array[Byte] = StringUtils.stringToBytes(toString)
+}
 
 object GitObjectType {
   case object Blob extends GitObjectType
@@ -133,6 +135,26 @@ object CommitObj {
       description = description,
       sha1 = sha1,
     )
+  }
+}
+
+case class TagObj(ref: GitReference)
+
+object TagObj {
+  def createLightweightTag(repo: GitRepository, name: String, sha1: String): Either[WyagError, TagObj] = {
+    val path = repo.gitdir / "refs" / "tags" / name
+    if (exists(path)) WyagError.l(s"Tag $name already exists")
+    else {
+      WyagError.tryCatch(write(path, sha1))
+        .flatMap(_ => GitReference(repo, path))
+        .map(ref => TagObj(ref))
+    }
+  }
+
+  def createTagObject(): Either[WyagError, TagObj] = {
+    // create tag object it'll refer to
+    // create ref to this commit
+    ???
   }
 }
 

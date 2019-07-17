@@ -2,6 +2,7 @@ import ammonite.ops._
 
 object StringUtils {
   def bytesToString(bytes: Array[Byte]): String = bytes.map(_.toChar).mkString
+  def stringToBytes(s: String): Array[Byte] = s.toCharArray.map(_.toByte)
 
   def convertBytesToHex(bytes: Array[Byte]): String = {
     val sb = new StringBuilder
