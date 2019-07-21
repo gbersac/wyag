@@ -43,18 +43,19 @@ object Executor {
         refs <- GitReference.all(repo)
       } yield refs.map(ref => s"${ref.resolve.sha1} ${ref.path.relativeTo(repo.gitdir)}").mkString("\n")
 
-    case tagCommand: CLICommand.Tag =>
+    case CLICommand.ListTags =>
+      findRepo.map(repo =>
+        Try(ls(repo.gitdir / "refs" / "tags"))
+          .getOrElse(List())
+          .map(_.last)
+          .mkString("\n")
+      )
+
+    case CLICommand.WriteTag(tagName, sha1) =>
       for {
         repo <- findRepo
-        output <- {
-          if (tagCommand.readTags) Right(
-            Try(ls(repo.gitdir / "refs" / "tags")).getOrElse(List())
-              .map(_.last)
-              .mkString("\n")
-          )
-          else ???
-        }
-      } yield output
+        output <- TagObj.createLightweightTag(repo, tagName, sha1)
+      } yield s"Created $tagName"
 
   }
 

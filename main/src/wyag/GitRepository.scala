@@ -10,14 +10,19 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
   def findObject(sha: String): Either[WyagError, GitObject[_]] =
     for {
 
-      raw <- {
-        val path = gitdir / "objects" / sha.substring(0, 2) / sha.substring(2)
-        if (exists(path)) {
-          val bytes = read.bytes(path)
-          Right(ZipUtils.decompress(bytes))
-        } else WyagError.l(s"No object which sha is $sha in the repo")
+      tuple <- {
+        ls(gitdir / "objects" / sha.substring(0, 2))
+          .find(_.last.startsWith(sha.substring(2)))
+          .map { path =>
+            val bytes = read.bytes(path)
+            println
+            (path.last, ZipUtils.decompress(bytes))
+          }
+          .toRight(WyagError(s"No object which sha is $sha in the repo"))
       }
 
+      (endLongSha1, raw) = tuple
+      longSha1 = sha.substring(0, 2) + endLongSha1
       endOfType = raw.indexOf(' '.toByte)
       typ <- {
         val typeByte = raw.slice(0, endOfType)
@@ -32,7 +37,7 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
         else WyagError.l(s"Object size is $realSize instead of $size")
       }
 
-      obj <- GitObject(raw.drop(endOfSize + 1), typ, sha)
+      obj <- GitObject(raw.drop(endOfSize + 1), typ, longSha1)
 
     } yield obj
 

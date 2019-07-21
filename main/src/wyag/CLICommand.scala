@@ -13,9 +13,8 @@ object CLICommand {
   case class  LsTree(treeId: String) extends CLICommand
   case class  Checkout(commitHash: String, outputDirectory: Path) extends CLICommand
   case object ShowRef extends CLICommand
-  case class  Tag(tagName: Option[String], sha1: Option[String]) extends CLICommand {
-    def readTags: Boolean = tagName.isEmpty && sha1.isEmpty
-  }
+  case object ListTags extends CLICommand
+  case class  WriteTag(tagName: String, sha1: String) extends CLICommand
 
   def argsParse(args: Seq[String]): Either[WyagError, CLICommand] = {
     args.toList match {
@@ -52,9 +51,8 @@ object CLICommand {
 
           case "tag" =>
             tail match {
-              case Nil => Right(Tag(None, None))
-              case tagName :: Nil => Right(Tag(Some(tagName), None))
-              case tagName :: sha1 :: Nil => Right(Tag(Some(tagName), Some(sha1)))
+              case Nil => Right(ListTags)
+              case tagName :: sha1 :: Nil => Right(WriteTag(tagName, sha1))
               case _ => WyagError.l("usage tag tagName sha1")
             }
 

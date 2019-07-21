@@ -141,14 +141,15 @@ object CommitObj {
 case class TagObj(ref: GitReference)
 
 object TagObj {
+
   def createLightweightTag(repo: GitRepository, name: String, sha1: String): Either[WyagError, TagObj] = {
     val path = repo.gitdir / "refs" / "tags" / name
-    if (exists(path)) WyagError.l(s"Tag $name already exists")
-    else {
-      WyagError.tryCatch(write(path, sha1))
-        .flatMap(_ => GitReference(repo, path))
-        .map(ref => TagObj(ref))
-    }
+    for {
+      obj <- repo.findObject(sha1)
+      _ <- if (exists(path)) WyagError.l(s"Tag $name already exists") else Right(())
+      _ <- WyagError.tryCatch(write(path, obj.sha1 + "\n"))
+      ref <- GitReference(repo, path)
+    } yield TagObj(ref)
   }
 
   def createTagObject(): Either[WyagError, TagObj] = {
@@ -156,6 +157,7 @@ object TagObj {
     // create ref to this commit
     ???
   }
+
 }
 
 object GitObject {
