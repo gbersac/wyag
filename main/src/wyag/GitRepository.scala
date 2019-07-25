@@ -7,7 +7,7 @@ import scala.math.BigInt
  */
 class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
 
-  def findObject(sha: String): Either[WyagError, GitObject[_]] =
+  def findObject(sha: String): Either[WyagError, GitObject] =
     for {
 
       tuple <- {
@@ -15,7 +15,6 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
           .find(_.last.startsWith(sha.substring(2)))
           .map { path =>
             val bytes = read.bytes(path)
-            println
             (path.last, ZipUtils.decompress(bytes))
           }
           .toRight(WyagError(s"No object which sha is $sha in the repo"))
@@ -33,6 +32,7 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
       _ <- {
         val size = StringUtils.bytesToString(raw.slice(endOfType + 1, endOfSize)).toInt
         val realSize = raw.length - endOfSize - 1
+        println("²²²", typ, size)
         if (size == realSize) Right(())
         else WyagError.l(s"Object size is $realSize instead of $size")
       }
@@ -41,12 +41,25 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
 
     } yield obj
 
-
   /** Return the sha1 of the newly created object (if successful) */
-  def writeObject(typ: GitObjectType, content: Array[Byte]): Either[WyagError, String] = {
-    val header = typ.toByte ++ StringUtils.stringToBytes(" ") ++
-      BigInt(content.length).toByteArray ++ StringUtils.stringToBytes("\0")
-    ???
+  def writeObject(typ: GitObjectType, rawContent: Array[Byte]): Either[WyagError, String] = {
+    val data: Array[Byte] = typ.toByte ++ StringUtils.stringToBytes(s" ${rawContent.length}\0") ++ rawContent
+    println("writeObject", rawContent.length, StringUtils.bytesToString(data))
+    val sha = {
+      val md = java.security.MessageDigest.getInstance("SHA-1")
+      md.digest(data).map("%02x".format(_)).mkString
+    }
+    val path = gitdir / "objects" / sha.substring(0, 2) / sha.substring(2)
+    if (exists(path))
+      WyagError.l(s"File ${path} already exists")
+    else {
+      if (!exists(path / up))
+        mkdir(path / up)
+      val compressed = ZipUtils.compress(data)
+      WyagError.tryCatch(write(path, compressed))
+        .map(_ => sha)
+        .left.map(err => WyagError(s"Cannot create object ${sha} (file ${err.msg})"))
+    }
   }
 
 }
@@ -59,9 +72,9 @@ object GitRepository {
     val config = path / ".git" / "config"
 
     if (!(exists(gitdir)))
-      Left(WyagError(s"Not a Git repository ${gitdir}"))
+      WyagError.l(s"Not a Git repository ${gitdir}")
     else if (!(exists(config)))
-      Left(WyagError(s"Config file missing ${config}"))
+      WyagError.l(s"Config file missing ${config}")
     else
       Right(new GitRepository(worktree, gitdir, config))
   }
@@ -71,7 +84,7 @@ object GitRepository {
     if (exists(gitdir) && stat(gitdir).isDir)
       GitRepository(path)
     else if (path == root)
-      Left(WyagError("No git directory."))
+      WyagError.l("No git directory.")
     else
       findRepo(path / up)
   }
@@ -86,7 +99,7 @@ object GitRepository {
     ).mkString("\n")
 
     if (exists(gitdir))
-      Left(WyagError(s"${gitdir} already exists"))
+      WyagError.l(s"${gitdir} already exists")
     else {
       mkdir(gitdir)
       mkdir(gitdir / "branches")
@@ -107,4 +120,3 @@ object GitRepository {
     }
   }
 }
-

@@ -1,7 +1,7 @@
 import ammonite.ops._
 
 sealed trait GitObjectType {
-  def toByte: Array[Byte] = StringUtils.stringToBytes(toString)
+  def toByte: Array[Byte] = StringUtils.stringToBytes(toString.toLowerCase)
 }
 
 object GitObjectType {
@@ -22,33 +22,33 @@ object GitObjectType {
   def unapply(typ: String): Option[GitObjectType] = apply(typ).toOption
 }
 
-sealed trait GitObject[TYPE <: GitObjectType] {
-  def typ: TYPE
+sealed trait GitObject {
+  def typ: GitObjectType
   def sha1: String
+  def serialize: Array[Byte]
 }
 
 // TODO should be Array[Byte]
-class BlobObj(val content: String, val sha1: String) extends GitObject[GitObjectType.Blob.type] {
+class BlobObj(val content: String, val sha1: String) extends GitObject {
   def typ = GitObjectType.Blob
+  def serialize: Array[Byte] = StringUtils.stringToBytes(content)
 }
 
-class TreeObj(val content: List[TreeObj.TreeLeaf], val sha1: String) extends GitObject[GitObjectType.Tree.type] {
+class TreeObj(val content: List[TreeObj.TreeLeaf], val sha1: String) extends GitObject {
   def typ = GitObjectType.Tree
+  def serialize: Array[Byte] = ???
 
   def writeTo(path: Path, repo: GitRepository): Either[WyagError, Unit] = {
-    println(content)
     ListUtils.sequenceE(
       content.map { leaf =>
         for {
           leafObj <- repo.findObject(leaf.sha1)
           _ <- leafObj match {
             case t: TreeObj =>
-              println("found tree obj", leaf.path)
               val dirPath = path / leaf.path
               if (!exists(dirPath)) mkdir(dirPath) else ()
               WyagError.tryCatch(t.writeTo(dirPath, repo), err => s"Cannot write tree: $err")
             case blob: BlobObj =>
-              println("found blob obj", leaf.path)
               WyagError.tryCatch(write(path / leaf.path, blob.content), err => s"Cannot write blob: $err")
             case o => WyagError.l(s"Could not write object of type ${o.typ}")
           }
@@ -87,8 +87,13 @@ case class CommitObj(
   committer: String,
   description: String,
   sha1: String,
-) extends GitObject[GitObjectType.Commit.type] {
+) extends GitObject {
   def typ = GitObjectType.Commit
+  def serialize: Array[Byte] = StringUtils.stringToBytes(
+    (parent.map("parent" -> _) :+ ("tree", tree))
+      .map(t => s"${t._1}${t._2}")
+      .mkString("\n")
+  )
 
   def writeTo(p: Path, repo: GitRepository): Either[WyagError, Unit] = {
     for {
@@ -103,30 +108,14 @@ object CommitObj {
   private val endPGPSignature: String = "-----END PGP SIGNATURE-----"
 
   def apply(rawContent: Array[Byte], sha1: String): Either[WyagError, CommitObj] = {
-    def isKeyValue(s: String): Boolean = s.startsWith("tree") || s.startsWith("parent") || s.startsWith("author") || s.startsWith("committer")
-    val contentLines = StringUtils.bytesToString(rawContent).split("\n")
-
-    // key values items
-    def loop(contentLines: List[String]): List[(String, String)] =  contentLines match {
-      case head :: tail if isKeyValue(head) =>
-        head.split(" ", 2).toList match {
-          case key :: value :: Nil => List((key, value)) ++ loop(tail)
-          case _ => loop(tail)
-        }
-      case _ => Nil
-    }
-    val kv: List[(String, String)] = loop(contentLines.toList)
+    val contentLines = StringUtils.bytesToString(rawContent).split("\n").toList
+    val kv = getKeyValues(contentLines)
 
     for {
       tree <- kv.find(_._1 == "tree").map(_._2).toRight(WyagError("No tree header"))
       author <- kv.find(_._1 == "author").map(_._2).toRight(WyagError("No author header"))
       committer <- kv.find(_._1 == "committer").map(_._2).toRight(WyagError("No committer header"))
-      description <- Right(
-        contentLines.drop(contentLines.indexOf(endPGPSignature) + 1)
-          .filterNot(_.trim.isEmpty)
-          .lastOption
-          .getOrElse("")
-      )
+      description <- Right(getDescription(contentLines))
     } yield new CommitObj(
       tree = tree,
       parent = kv.filter(_._1 == "parent").map(_._2),
@@ -136,57 +125,118 @@ object CommitObj {
       sha1 = sha1,
     )
   }
+
+  private val keys = List("tree", "parent", "author", "committer", "type", "tag", "tagger", "object")
+  def getKeyValues(contentLines: List[String]): List[(String, String)] = {
+    def isKeyValue(s: String): Boolean = keys.find(s.startsWith).isDefined
+    def loop(contentLines: List[String]): List[(String, String)] =  contentLines match {
+      case head :: tail if isKeyValue(head) =>
+        head.split(" ", 2).toList match {
+          case key :: value :: Nil => List((key, value)) ++ loop(tail)
+          case _ => loop(tail)
+        }
+      case _ => Nil
+    }
+    loop(contentLines.toList)
+  }
+
+  def getDescription(contentLines: List[String]): String =
+    contentLines.drop(contentLines.indexOf(endPGPSignature) + 1)
+      .filterNot(_.trim.isEmpty)
+      .lastOption
+      .getOrElse("")
+
 }
 
-case class TagObj(ref: GitReference)
+case class TagObj(
+  `object`: String,
+  `type`: GitObjectType,
+  tag: Option[String],
+  tagger: Option[String],
+  description: String,
+  sha1: String,
+) extends GitObject {
+  def typ: GitObjectType = GitObjectType.Tag
+  def serialize: Array[Byte] = StringUtils.stringToBytes {
+    val s = (List("object" -> `object`) ++ List(("type", `type`.toString.toLowerCase)) ++ tag.map(t => "tag" -> t).toList ++ tagger.map(t => "tagger" -> t).toList)
+      .map(t => s"${t._1} ${t._2}")
+      .mkString("\n") + s"\n\n$description\n"
+    s
+  }
+}
 
 object TagObj {
 
-  def createLightweightTag(repo: GitRepository, name: String, sha1: String): Either[WyagError, TagObj] = {
+  def apply(rawContent: Array[Byte], sha1: String): Either[WyagError, TagObj] = {
+    val contentLines = StringUtils.bytesToString(rawContent).split("\n").toList
+    val kv = CommitObj.getKeyValues(contentLines)
+    for {
+      obj <- kv.find(_._1 == "object").map(_._2).toRight(WyagError("No object sha1 in tag"))
+      typ <- kv.find(_._1 == "type").map(_._2).toRight(WyagError("No type header")).flatMap(GitObjectType.apply)
+      description <- Right(CommitObj.getDescription(contentLines))
+    } yield new TagObj(
+      `object` = obj,
+      `type` = typ,
+      tag = kv.find(_._1 == "tag").map(_._2),
+      tagger = kv.find(_._1 == "tagger").map(_._2),
+      description = description,
+      sha1 = sha1,
+    )
+  }
+
+  def createLightweightTag(repo: GitRepository, name: String, sha1: String): Either[WyagError, GitReference] = {
     val path = repo.gitdir / "refs" / "tags" / name
     for {
       obj <- repo.findObject(sha1)
       _ <- if (exists(path)) WyagError.l(s"Tag $name already exists") else Right(())
       _ <- WyagError.tryCatch(write(path, obj.sha1 + "\n"))
       ref <- GitReference(repo, path)
-    } yield TagObj(ref)
+    } yield ref
   }
 
-  def createTagObject(): Either[WyagError, TagObj] = {
-    // create tag object it'll refer to
-    // create ref to this commit
-    ???
-  }
+  def createTagObject(repo: GitRepository, name: String, sha1: String): Either[WyagError, GitReference] =
+    for {
+      targetObj <- repo.findObject(sha1)
+      tagObj = TagObj(
+        `object` = targetObj.sha1,
+        `type` = targetObj.typ,
+        tag = Some(name),
+        tagger = Some("Guillaume Bersac <bersac_1@hotmail.fr> 1563997946 +0200"),
+        description = "not implemented yet",
+        sha1 = "", // we don't know it yet
+      )
+      newObjSha1 <- repo.writeObject(tagObj.typ, tagObj.serialize)
+      ref <- createLightweightTag(repo, name, newObjSha1)
+    } yield ref
 
 }
 
 object GitObject {
-  def apply(content: Array[Byte], typ: GitObjectType, sha1: String): Either[WyagError, GitObject[_]] = typ match {
+  def apply(content: Array[Byte], typ: GitObjectType, sha1: String): Either[WyagError, GitObject] = typ match {
     case GitObjectType.Blob =>
       Right(new BlobObj(StringUtils.bytesToString(content), sha1))
     case GitObjectType.Tree =>
       Right(TreeObj(content, sha1))
     case GitObjectType.Tag =>
-      println("tag unimplemented")
-      ???
+      TagObj(content, sha1)
     case GitObjectType.Commit =>
       CommitObj(content, sha1)
   }
 
   import scala.reflect.runtime.universe._
-  def asObjectTree(obj: GitObject[_]): Either[WyagError, TreeObj] = obj match {
+  def asObjectTree(obj: GitObject): Either[WyagError, TreeObj] = obj match {
     case obj: TreeObj if typeOf[obj.type] =:= typeOf[TreeObj.type] => Right(obj)
     case _ => WyagError.l(s"Object is not of expected type tree")
   }
 
-  def asObjectBlob(obj: GitObject[_]): Either[WyagError, BlobObj] = obj match {
+  def asObjectBlob(obj: GitObject): Either[WyagError, BlobObj] = obj match {
     case obj: BlobObj if typeOf[obj.type] =:= typeOf[BlobObj] => Right(obj)
-    case _ => WyagError.l(s"Object is not of expected type tree")
+    case _ => WyagError.l(s"Object is not of expected type blob")
   }
 
-  def asObjectCommit(obj: GitObject[_]): Either[WyagError, CommitObj] = obj match {
+  def asObjectCommit(obj: GitObject): Either[WyagError, CommitObj] = obj match {
     case obj: CommitObj if typeOf[obj.type] =:= typeOf[CommitObj] => Right(obj)
-    case _ => WyagError.l(s"Object is not of expected type tree")
+    case _ => WyagError.l(s"Object is not of expected type commit")
   }
 
 }

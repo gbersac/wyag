@@ -14,7 +14,7 @@ object CLICommand {
   case class  Checkout(commitHash: String, outputDirectory: Path) extends CLICommand
   case object ShowRef extends CLICommand
   case object ListTags extends CLICommand
-  case class  WriteTag(tagName: String, sha1: String) extends CLICommand
+  case class  WriteTag(tagName: String, sha1: String, createTagObject: Boolean) extends CLICommand
 
   def argsParse(args: Seq[String]): Either[WyagError, CLICommand] = {
     args.toList match {
@@ -52,8 +52,9 @@ object CLICommand {
           case "tag" =>
             tail match {
               case Nil => Right(ListTags)
-              case tagName :: sha1 :: Nil => Right(WriteTag(tagName, sha1))
-              case _ => WyagError.l("usage tag tagName sha1")
+              case tagName :: sha1 :: Nil => Right(WriteTag(tagName, sha1, createTagObject = false))
+              case "-a" :: tagName :: sha1 :: Nil => Right(WriteTag(tagName, sha1, createTagObject = true))
+              case _ => WyagError.l("usage tag [-a] tagName sha1")
             }
 
           case _ =>  WyagError.l(s"Unknown command $subCommand")

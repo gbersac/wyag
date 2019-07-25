@@ -13,11 +13,7 @@ object Executor {
       for {
         repo <- GitRepository.findRepo()
         obj <- repo.findObject(name)
-        blob <- obj match {
-          case b: BlobObj => Right(b)
-          case _ => WyagError.l("object should be a blob")
-        }
-      } yield blob.content
+      } yield StringUtils.bytesToString(obj.serialize)
 
     case CLICommand.LsTree(treeId: String) =>
       for {
@@ -51,10 +47,12 @@ object Executor {
           .mkString("\n")
       )
 
-    case CLICommand.WriteTag(tagName, sha1) =>
+    case CLICommand.WriteTag(tagName, sha1, createTagObject) =>
       for {
         repo <- findRepo
-        output <- TagObj.createLightweightTag(repo, tagName, sha1)
+        output <-
+          if (createTagObject) TagObj.createTagObject(repo, tagName, sha1)
+          else TagObj.createLightweightTag(repo, tagName, sha1)
       } yield s"Created $tagName"
 
   }
@@ -65,7 +63,7 @@ object Executor {
 object Main {
   def main(args: Array[String]): Unit = {
     CLICommand.argsParse(args).flatMap(Executor.execute) match {
-      case Left(err) => println("Error:", err.msg)
+      case Left(err) => println(s"Error: ${err.msg}")
       case Right(v) => println(v)
     }
   }

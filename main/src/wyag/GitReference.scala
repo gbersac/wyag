@@ -3,16 +3,16 @@ import ammonite.ops._
 sealed trait GitReference {
   def path: Path
   def repo: GitRepository
-  def resolve: GitObject[_]
+  def resolve: GitObject
 }
 
 case class GitDirectReference(path: Path, repo: GitRepository, sha1: String) extends GitReference {
-  def resolve: GitObject[_] = repo.findObject(sha1)
+  def resolve: GitObject = repo.findObject(sha1)
     .right.getOrElse(throw new Error(s"$sha1 is not a correct file")) // should always be a blob
 }
 
 case class GitUndirectReference(path: Path, repo: GitRepository, linkTo: Path) extends GitReference {
-  def resolve: GitObject[_] = GitReference(repo, linkTo)
+  def resolve: GitObject = GitReference(repo, linkTo)
     .right.getOrElse(throw new Error(s"$linkTo is not a reference")) // should always exist
     .resolve
 }
