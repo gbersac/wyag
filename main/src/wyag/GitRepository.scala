@@ -1,3 +1,6 @@
+import scala.util.Try
+import scala.util.control.NonFatal
+
 import ammonite.ops._
 import scala.math.BigInt
 
@@ -6,18 +9,22 @@ import scala.math.BigInt
  * @param gitdir   root of the .git directory of the repo
  */
 class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
+  val refsDir: Path = gitdir / "refs"
 
   def findObject(sha: String): Either[WyagError, GitObject] =
     for {
 
       tuple <- {
-        ls(gitdir / "objects" / sha.substring(0, 2))
-          .find(_.last.startsWith(sha.substring(2)))
-          .map { path =>
-            val bytes = read.bytes(path)
-            (path.last, ZipUtils.decompress(bytes))
-          }
-          .toRight(WyagError(s"No object which sha is $sha in the repo"))
+        WyagError.tryCatch(ls(gitdir / "objects" / sha.substring(0, 2)))
+          .flatMap(
+            _.find(_.last.startsWith(sha.substring(2)))
+              .map { path =>
+                val bytes = read.bytes(path)
+                (path.last, ZipUtils.decompress(bytes))
+              }
+              .toRight(WyagError.l(""))
+          )
+          .left.map(_ => WyagError(s"No object which sha is $sha in the repo"))
       }
 
       (endLongSha1, raw) = tuple
@@ -58,6 +65,15 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
         .map(_ => sha)
         .left.map(err => WyagError(s"Cannot create object ${sha} (file ${err.msg})"))
     }
+  }
+
+  def findReference(name: String): Either[WyagError, GitReference] = {
+    val testPath = (p: Path) => if (exists(p)) Some(GitReference.apply(this, p)) else None
+
+    testPath(worktree / RelPath(name))
+      .orElse(testPath(refsDir / "heads" / name))
+      .orElse(testPath(refsDir / "tags" / name))
+      .getOrElse(WyagError.l(s"No reference Named $name"))
   }
 
 }
