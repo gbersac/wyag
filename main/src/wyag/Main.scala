@@ -55,6 +55,13 @@ object Executor {
           else TagObj.createLightweightTag(repo, tagName, sha1)
       } yield s"Created $tagName"
 
+    case CLICommand.RevParse(name) =>
+      for {
+        repo <- findRepo
+        obj <- name.resolveAsObject(repo)
+      } yield obj.sha1
+
+
   }
 
   private def findRepo: Either[WyagError, GitRepository] = GitRepository.findRepo()

@@ -15,6 +15,7 @@ object CLICommand {
   case object ShowRef extends CLICommand
   case object ListTags extends CLICommand
   case class  WriteTag(tagName: String, sha1: String, createTagObject: Boolean) extends CLICommand
+  case class  RevParse(value: GitRawName) extends CLICommand
 
   def argsParse(args: Seq[String]): Either[WyagError, CLICommand] = {
     args.toList match {
@@ -57,8 +58,15 @@ object CLICommand {
               case _ => WyagError.l("usage tag [-a] tagName sha1")
             }
 
+          case "rev-parse" =>
+            tail match {
+              case GitRawName(name) :: Nil => Right(RevParse(name))
+              case _ => WyagError.l("usage rev-parse tagName")
+            }
+
           case _ =>  WyagError.l(s"Unknown command $subCommand")
         }
+
       case _ => WyagError.l("Usage `wyag subCommand`")
     }
   }

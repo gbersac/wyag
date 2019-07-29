@@ -32,7 +32,6 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
       _ <- {
         val size = StringUtils.bytesToString(raw.slice(endOfType + 1, endOfSize)).toInt
         val realSize = raw.length - endOfSize - 1
-        println("²²²", typ, size)
         if (size == realSize) Right(())
         else WyagError.l(s"Object size is $realSize instead of $size")
       }
@@ -44,7 +43,6 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
   /** Return the sha1 of the newly created object (if successful) */
   def writeObject(typ: GitObjectType, rawContent: Array[Byte]): Either[WyagError, String] = {
     val data: Array[Byte] = typ.toByte ++ StringUtils.stringToBytes(s" ${rawContent.length}\0") ++ rawContent
-    println("writeObject", rawContent.length, StringUtils.bytesToString(data))
     val sha = {
       val md = java.security.MessageDigest.getInstance("SHA-1")
       md.digest(data).map("%02x".format(_)).mkString
