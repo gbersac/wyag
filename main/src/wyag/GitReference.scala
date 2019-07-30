@@ -6,28 +6,28 @@ sealed trait GitReference {
   def resolve: GitObject
 }
 
-case class GitDirectReference(path: Path, repo: GitRepository, sha1: String) extends GitReference {
-  def resolve: GitObject = repo.findObject(sha1)
+case class GitDirectReference(path: Path, repo: GitRepository, sha1: FullSHA1) extends GitReference {
+  def resolve: GitObject = repo.findObject(sha1.value)
     .right.getOrElse(throw new Error(s"$sha1 is not a correct file")) // should always be a blob
 }
 
 case class GitUndirectReference(path: Path, repo: GitRepository, linkTo: Path) extends GitReference {
-  def resolve: GitObject = GitReference(repo, linkTo)
-    .right.getOrElse(throw new Error(s"$linkTo is not a reference")) // should always exist
-    .resolve
+  def resolve: GitObject = GitReference(repo, linkTo) match {
+    case Right(ref) => ref.resolve
+    case Left(err) => throw new Error(s"$linkTo is not a reference (error is ${err.msg})") // should always exist
+  }
 }
 
 object GitReference {
 
   def apply(repo: GitRepository, path: Path): Either[WyagError, GitReference] = {
-    PathUtils.readFile(path)
-      .flatMap {content =>
-        WyagError.tryCatch(Path(content))
-          .fold(
-            _ => Right(GitDirectReference(path, repo, content.trim)),
-            path => Right(GitUndirectReference(path, repo, path))
-          )
-      }
+    for {
+      content <- PathUtils.readFile(path)
+      ref <-
+        if (content.startsWith("ref: ")) WyagError.tryCatch(repo.gitdir / RelPath(content.trim.substring(5)))
+          .map(linkTo => GitUndirectReference(path, repo, linkTo))
+        else FullSHA1(content.trim).map(sha1 => GitDirectReference(path, repo, sha1))
+    } yield ref
   }
 
   def all(repo: GitRepository): Either[WyagError, Seq[GitReference]] = {

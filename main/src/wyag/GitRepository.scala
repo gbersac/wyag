@@ -68,13 +68,15 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
   }
 
   def findReference(name: String): Either[WyagError, GitReference] = {
-    val testPath = (p: Path) => if (exists(p)) Some(GitReference.apply(this, p)) else None
+    val testPath = (p: Path) => if (exists(p)) Some(GitReference(this, p)) else None
 
     testPath(worktree / RelPath(name))
       .orElse(testPath(refsDir / "heads" / name))
       .orElse(testPath(refsDir / "tags" / name))
       .getOrElse(WyagError.l(s"No reference Named $name"))
   }
+
+  def HEAD: Either[WyagError, GitReference] = GitReference(this, gitdir / "HEAD")
 
 }
 
