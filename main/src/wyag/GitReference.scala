@@ -7,7 +7,7 @@ sealed trait GitReference {
 }
 
 case class GitDirectReference(path: Path, repo: GitRepository, sha1: FullSHA1) extends GitReference {
-  def resolve: GitObject = repo.findObject(sha1.value)
+  def resolve: GitObject = repo.findObject(sha1.asString)
     .right.getOrElse(throw new Error(s"$sha1 is not a correct file")) // should always be a blob
 }
 

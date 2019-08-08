@@ -20,7 +20,7 @@ object Executor {
         repo <- findRepo
         content <- repo.findObject(treeId)
         tree <- GitObject.asObjectTree(content)
-      } yield tree.content.map(line => s"${line.mode} ${line.sha1} ${line.path}").mkString("\n")
+      } yield tree.content.map(line => s"${line.mode} ${line.sha1} ${line.fileName}").mkString("\n")
 
     case CLICommand.Checkout(commitHash, outputDirectory) =>
       for {
@@ -61,6 +61,16 @@ object Executor {
         obj <- name.resolveAsObject(repo)
       } yield obj.sha1
 
+    case CLICommand.Commit(name) =>
+      for {
+        repo <- findRepo
+        obj <- TreeObj.store(repo, repo.worktree)
+          // 1- create commit object
+          // 2- create tree & blob object
+          // 3- update the head reference
+          // 4- handle file mode
+          // don't forget to handle the init commit
+      } yield obj.sha1
 
   }
 

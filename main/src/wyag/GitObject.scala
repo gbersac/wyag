@@ -29,27 +29,36 @@ sealed trait GitObject {
 }
 
 // TODO should be Array[Byte]
-class BlobObj(val content: String, val sha1: String) extends GitObject {
+case class BlobObj(val content: String, val sha1: String) extends GitObject {
   def typ = GitObjectType.Blob
   def serialize: Array[Byte] = StringUtils.stringToBytes(content)
 }
 
-class TreeObj(val content: List[TreeObj.TreeLeaf], val sha1: String) extends GitObject {
-  def typ = GitObjectType.Tree
-  def serialize: Array[Byte] = ???
+object BlobObj {
+  def store(repo: GitRepository, path: Path): Either[WyagError, BlobObj] =
+    for {
+      content <- PathUtils.readFile(path)
+      sha1 <- repo.writeObject(GitObjectType.Blob, StringUtils.stringToBytes(content), false)
+    } yield BlobObj(content, sha1)
+}
 
+class TreeObj(val content: Seq[TreeObj.TreeLeaf], val sha1: String) extends GitObject {
+  def typ = GitObjectType.Tree
+  def serialize: Array[Byte] = TreeObj.serialize(content)
+
+  /** Write real value of nodes to a location */
   def writeTo(path: Path, repo: GitRepository): Either[WyagError, Unit] = {
     ListUtils.sequenceE(
       content.map { leaf =>
         for {
-          leafObj <- repo.findObject(leaf.sha1)
+          leafObj <- repo.findObject(leaf.sha1.asString)
           _ <- leafObj match {
             case t: TreeObj =>
-              val dirPath = path / leaf.path
+              val dirPath = path / leaf.fileName
               if (!exists(dirPath)) mkdir(dirPath) else ()
               WyagError.tryCatch(t.writeTo(dirPath, repo), err => s"Cannot write tree: $err")
             case blob: BlobObj =>
-              WyagError.tryCatch(write(path / leaf.path, blob.content), err => s"Cannot write blob: $err")
+              WyagError.tryCatch(write(path / leaf.fileName, blob.content), err => s"Cannot write blob: $err")
             case o => WyagError.l(s"Could not write object of type ${o.typ}")
           }
         } yield ()
@@ -60,7 +69,14 @@ class TreeObj(val content: List[TreeObj.TreeLeaf], val sha1: String) extends Git
 }
 
 object TreeObj {
-  case class TreeLeaf(mode: String, path: String, sha1: String)
+  case class TreeLeaf(mode: String, fileName: String, sha1: FullSHA1)
+
+  def serialize(content: Seq[TreeLeaf]): Array[Byte] =
+    content.sortWith(_.fileName < _.fileName)
+      .map(leaf => {
+        StringUtils.stringToBytes(s"${PathUtils.permissionToOctal(leaf.mode)} ${leaf.fileName}\0") ++ leaf.sha1.asBytes
+      })
+      .fold(Array[Byte]())(_ ++ _)
 
   def apply(rawContent: Array[Byte], sha1: String): TreeObj = {
     def loop(array: Array[Byte]): List[Array[Byte]] = {
@@ -70,12 +86,34 @@ object TreeObj {
       else array :: Nil
     }
     val lines = loop(rawContent).map { line =>
-        val mode = StringUtils.bytesToString(line.takeWhile(_ != ' '.toByte))
-        val path = StringUtils.bytesToString(line.drop(mode.length + 1).takeWhile(_ != 0))
-        val sha1 = StringUtils.convertBytesToHex(line.takeRight(20))
-        TreeLeaf(mode, path, sha1)
-      }
+      val mode = StringUtils.bytesToString(line.takeWhile(_ != ' '.toByte))
+      val fileName = StringUtils.bytesToString(line.drop(mode.length + 1).takeWhile(_ != 0))
+      val sha1 = StringUtils.convertBytesToHex(line.takeRight(20))
+      TreeLeaf(mode, fileName, FullSHA1.raw(sha1))
+    }
     new TreeObj(lines, sha1)
+  }
+
+  private val filteredDirectories = List(".git", "out") // TODO remove the filter out hack
+  def store(repo: GitRepository, path: Path): Either[WyagError, TreeObj] = {
+    for {
+      files <- WyagError.tryCatch(ls(path))
+      leafs <- ListUtils.sequenceE(
+        files.filter(f => !filteredDirectories.contains(f.last)).map { f =>
+          val fileStat = stat(f)
+          if (fileStat.isDir) {
+            TreeObj.store(repo, f)
+              .map(o => TreeLeaf(fileStat.permissions.toString, f.last, FullSHA1(o.sha1).right.get)) // YOLO
+          } else if (fileStat.isFile) {
+            BlobObj.store(repo, f)
+              .map(o => TreeLeaf(fileStat.permissions.toString, f.last, FullSHA1(o.sha1).right.get)) // YOLO
+          } else WyagError.l(s"File $f not committed")
+        }
+      )
+      sha1 <- repo.writeObject(GitObjectType.Tree, serialize(leafs), false)
+    } yield {
+      new TreeObj(leafs, sha1)
+    }
   }
 
 }
@@ -90,9 +128,9 @@ case class CommitObj(
 ) extends GitObject {
   def typ = GitObjectType.Commit
   def serialize: Array[Byte] = StringUtils.stringToBytes(
-    (parent.map("parent" -> _) :+ ("tree", tree))
+    (List("tree" -> tree) ++ parent.map("parent" -> _) :+ ("author", author) :+ ("committer", committer))
       .map(t => s"${t._1}${t._2}")
-      .mkString("\n")
+      .mkString("\n") + s"\n\n$description\n"
   )
 
   def writeTo(p: Path, repo: GitRepository): Either[WyagError, Unit] = {

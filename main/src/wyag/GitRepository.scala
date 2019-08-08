@@ -48,7 +48,7 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
     } yield obj
 
   /** Return the sha1 of the newly created object (if successful) */
-  def writeObject(typ: GitObjectType, rawContent: Array[Byte]): Either[WyagError, String] = {
+  def writeObject(typ: GitObjectType, rawContent: Array[Byte], blockIfExists: Boolean = true): Either[WyagError, String] = {
     val data: Array[Byte] = typ.toByte ++ StringUtils.stringToBytes(s" ${rawContent.length}\0") ++ rawContent
     val sha = {
       val md = java.security.MessageDigest.getInstance("SHA-1")
@@ -56,7 +56,7 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
     }
     val path = gitdir / "objects" / sha.substring(0, 2) / sha.substring(2)
     if (exists(path))
-      WyagError.l(s"File ${path} already exists")
+      if (blockIfExists) WyagError.l(s"File ${path} already exists") else Right(sha)
     else {
       if (!exists(path / up))
         mkdir(path / up)

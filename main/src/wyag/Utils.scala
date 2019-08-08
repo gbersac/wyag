@@ -28,4 +28,8 @@ object PathUtils {
       WyagError.l(s"File $path is a ${stat(path).fileType.toString.toLowerCase} not file.")
     else
       WyagError.tryCatch(read(path))
+
+  // TODO string constant 100 is wrong
+  // def permissionToOctal(perms: PermSet): String = "100" + java.lang.Long.toString(stat(pwd).permissions.value, 8)
+  def permissionToOctal(perms: PermSet): String = "100644"
 }
