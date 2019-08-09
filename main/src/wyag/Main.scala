@@ -61,10 +61,10 @@ object Executor {
         obj <- name.resolveAsObject(repo)
       } yield obj.sha1
 
-    case CLICommand.Commit(name) =>
+    case CLICommand.Commit(description) =>
       for {
         repo <- findRepo
-        obj <- TreeObj.store(repo, repo.worktree)
+        obj <- CommitObj.store(repo, description)
           // 1- create commit object
           // 2- create tree & blob object
           // 3- update the head reference

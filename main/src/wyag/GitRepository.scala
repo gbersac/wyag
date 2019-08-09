@@ -78,6 +78,10 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
 
   def HEAD: Either[WyagError, GitReference] = GitReference(this, gitdir / "HEAD")
 
+  def branchHEAD: Either[WyagError, CommitObj] = for {
+    head <- HEAD
+    commitObj <- GitObject.asObjectCommit(head.resolve)
+  } yield commitObj
 }
 
 object GitRepository {

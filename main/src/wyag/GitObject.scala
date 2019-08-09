@@ -127,11 +127,7 @@ case class CommitObj(
   sha1: String,
 ) extends GitObject {
   def typ = GitObjectType.Commit
-  def serialize: Array[Byte] = StringUtils.stringToBytes(
-    (List("tree" -> tree) ++ parent.map("parent" -> _) :+ ("author", author) :+ ("committer", committer))
-      .map(t => s"${t._1}${t._2}")
-      .mkString("\n") + s"\n\n$description\n"
-  )
+  def serialize: Array[Byte] = CommitObj.serialize(tree, parent, author, committer, description)
 
   def writeTo(p: Path, repo: GitRepository): Either[WyagError, Unit] = {
     for {
@@ -144,6 +140,18 @@ case class CommitObj(
 object CommitObj {
   private val beginPGPSignature: String = "gpgsig -----BEGIN PGP SIGNATURE-----"
   private val endPGPSignature: String = "-----END PGP SIGNATURE-----"
+
+  def serialize(
+    tree: String,
+    parent: List[String],
+    author: String,
+    committer: String,
+    description: String,
+  ): Array[Byte] = StringUtils.stringToBytes(
+    (List("tree" -> tree) ++ parent.map("parent" -> _) :+ ("author", author) :+ ("committer", committer))
+      .map(t => s"${t._1} ${t._2}")
+      .mkString("\n") + s"\n\n$description\n"
+  )
 
   def apply(rawContent: Array[Byte], sha1: String): Either[WyagError, CommitObj] = {
     val contentLines = StringUtils.bytesToString(rawContent).split("\n").toList
@@ -183,6 +191,14 @@ object CommitObj {
       .filterNot(_.trim.isEmpty)
       .lastOption
       .getOrElse("")
+
+  private val author = "Guillaume Bersac <bersac_1@hotmail.fr> 1565295746 +0200"
+  def store(repo: GitRepository, description: String): Either[WyagError, CommitObj] = for {
+    tree <- TreeObj.store(repo, repo.worktree)
+    parent <- repo.branchHEAD
+    ser = serialize(tree.sha1, List(parent.sha1), author, author, description)
+    sha1 <- repo.writeObject(GitObjectType.Commit, ser, false)
+  } yield CommitObj(tree.sha1, List(parent.sha1), author, author, description, sha1)
 
 }
 
@@ -273,7 +289,7 @@ object GitObject {
   }
 
   def asObjectCommit(obj: GitObject): Either[WyagError, CommitObj] = obj match {
-    case obj: CommitObj if typeOf[obj.type] =:= typeOf[CommitObj] => Right(obj)
+    case obj: CommitObj => Right(obj)
     case _ => WyagError.l(s"Object is not of expected type commit")
   }
 
