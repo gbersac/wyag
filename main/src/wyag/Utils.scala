@@ -21,6 +21,7 @@ object ListUtils {
 }
 
 object PathUtils {
+
   def readFile(path: Path): Either[WyagError, String] =
     if (!exists(path))
       WyagError.l(s"File $path does not exists.")
@@ -29,7 +30,11 @@ object PathUtils {
     else
       WyagError.tryCatch(read(path))
 
-  // TODO string constant 100 is wrong
-  // def permissionToOctal(perms: PermSet): String = "100" + java.lang.Long.toString(stat(pwd).permissions.value, 8)
-  def permissionToOctal(perms: PermSet): String = "100644"
+    // TODO symlink
+  def permissionToOctal(path: Path): String = {
+    val details = stat(path)
+    if (details.isDir) "040000"
+    else s"100${java.lang.Long.toString(details.permissions.value, 8)}"
+  }
+
 }

@@ -65,8 +65,7 @@ object Executor {
       for {
         repo <- findRepo
         obj <- CommitObj.store(repo, description)
-          // 1- create commit object
-          // 2- create tree & blob object
+        _ <- repo.updateHEAD(obj)
           // 3- update the head reference
           // 4- handle file mode
           // don't forget to handle the init commit

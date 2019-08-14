@@ -73,9 +73,7 @@ object TreeObj {
 
   def serialize(content: Seq[TreeLeaf]): Array[Byte] =
     content.sortWith(_.fileName < _.fileName)
-      .map(leaf => {
-        StringUtils.stringToBytes(s"${PathUtils.permissionToOctal(leaf.mode)} ${leaf.fileName}\0") ++ leaf.sha1.asBytes
-      })
+      .map(leaf => StringUtils.stringToBytes(s"${leaf.mode} ${leaf.fileName}\0") ++ leaf.sha1.asBytes)
       .fold(Array[Byte]())(_ ++ _)
 
   def apply(rawContent: Array[Byte], sha1: String): TreeObj = {
@@ -94,23 +92,27 @@ object TreeObj {
     new TreeObj(lines, sha1)
   }
 
-  private val filteredDirectories = List(".git", "out") // TODO remove the filter out hack
+  private val filteredDirectories = List(".git", "out") // TODO remove the filter 'out' hack
   def store(repo: GitRepository, path: Path): Either[WyagError, TreeObj] = {
     for {
       files <- WyagError.tryCatch(ls(path))
       leafs <- ListUtils.sequenceE(
         files.filter(f => !filteredDirectories.contains(f.last)).map { f =>
           val fileStat = stat(f)
+          val mode = PathUtils.permissionToOctal(f)
           if (fileStat.isDir) {
             TreeObj.store(repo, f)
-              .map(o => TreeLeaf(fileStat.permissions.toString, f.last, FullSHA1(o.sha1).right.get)) // YOLO
+              .map(o => TreeLeaf(mode, f.last, FullSHA1(o.sha1).right.get)) // YOLO
           } else if (fileStat.isFile) {
             BlobObj.store(repo, f)
-              .map(o => TreeLeaf(fileStat.permissions.toString, f.last, FullSHA1(o.sha1).right.get)) // YOLO
+              .map(o => TreeLeaf(mode, f.last, FullSHA1(o.sha1).right.get)) // YOLO
           } else WyagError.l(s"File $f not committed")
         }
       )
-      sha1 <- repo.writeObject(GitObjectType.Tree, serialize(leafs), false)
+      sha1 <- {
+        println(path, leafs.mkString("\n"))
+        repo.writeObject(GitObjectType.Tree, serialize(leafs), false)
+      }
     } yield {
       new TreeObj(leafs, sha1)
     }

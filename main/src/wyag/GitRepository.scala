@@ -49,6 +49,7 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
 
   /** Return the sha1 of the newly created object (if successful) */
   def writeObject(typ: GitObjectType, rawContent: Array[Byte], blockIfExists: Boolean = true): Either[WyagError, String] = {
+    println(typ, StringUtils.bytesToString(typ.toByte))
     val data: Array[Byte] = typ.toByte ++ StringUtils.stringToBytes(s" ${rawContent.length}\0") ++ rawContent
     val sha = {
       val md = java.security.MessageDigest.getInstance("SHA-1")
@@ -82,6 +83,24 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
     head <- HEAD
     commitObj <- GitObject.asObjectCommit(head.resolve)
   } yield commitObj
+
+  def updateHEAD(commit: CommitObj): Either[WyagError, Unit] = {
+    HEAD match {
+      case Right(ref) =>
+        ref match {
+          case directRef: GitDirectReference => WyagError.l("You can't commit if you're not on a branch.")
+          case undirectRef: GitUndirectReference =>
+            WyagError.tryCatch(
+              write.over(undirectRef.fullPath, commit.sha1, createFolders = true),
+              m => s"Cannot update commit hash at $m"
+            )
+        }
+
+      // not tested
+      case Left(_) => WyagError.tryCatch(write(gitdir / "refs" / "heads" / "master", commit.sha1, createFolders = true))
+    }
+  }
+
 }
 
 object GitRepository {
