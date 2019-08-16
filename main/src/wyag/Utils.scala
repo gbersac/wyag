@@ -22,6 +22,10 @@ object ListUtils {
 
 object PathUtils {
 
+  def fromString(s: String): Either[WyagError, Path] =
+    WyagError.tryCatch(Path(s), _ => s"Malformed path $s")
+      .flatMap { p => if (exists(p)) Right(p) else WyagError.l(s"The file $s does not exists") }
+
   def readFile(path: Path): Either[WyagError, String] =
     if (!exists(path))
       WyagError.l(s"File $path does not exists.")

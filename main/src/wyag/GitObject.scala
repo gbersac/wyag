@@ -109,13 +109,8 @@ object TreeObj {
           } else WyagError.l(s"File $f not committed")
         }
       )
-      sha1 <- {
-        println(path, leafs.mkString("\n"))
-        repo.writeObject(GitObjectType.Tree, serialize(leafs), false)
-      }
-    } yield {
-      new TreeObj(leafs, sha1)
-    }
+      sha1 <- repo.writeObject(GitObjectType.Tree, serialize(leafs), false)
+    } yield new TreeObj(leafs, sha1)
   }
 
 }

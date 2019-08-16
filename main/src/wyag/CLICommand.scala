@@ -17,6 +17,7 @@ object CLICommand {
   case class  WriteTag(tagName: String, sha1: String, createTagObject: Boolean) extends CLICommand
   case class  RevParse(value: GitRawName) extends CLICommand
   case class  Commit(name: String) extends CLICommand
+  case class  Add(paths: Seq[RelPath]) extends CLICommand
 
   // TODO use a real cli args parser
   def argsParse(args: Seq[String]): Either[WyagError, CLICommand] = {
@@ -69,8 +70,12 @@ object CLICommand {
           case "commit" =>
             tail match {
               case "-m" :: name :: Nil => Right(Commit(name))
-              case _ => WyagError.l("usage rev-parse tagName")
+              case _ => WyagError.l("usage commit -m name")
             }
+
+          case "add" =>
+            ListUtils.sequenceE(tail.map(s => WyagError.tryCatch(RelPath(s))))
+              .map(p => Add(p))
 
           case _ =>  WyagError.l(s"Unknown command $subCommand")
         }

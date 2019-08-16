@@ -10,6 +10,7 @@ import scala.math.BigInt
  */
 class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
   val refsDir: Path = gitdir / "refs"
+  val indexFile: Path = gitdir / "index"
 
   def findObject(sha: String): Either[WyagError, GitObject] =
     for {
@@ -49,7 +50,6 @@ class GitRepository(val worktree: Path, val gitdir: Path, config: Path) {
 
   /** Return the sha1 of the newly created object (if successful) */
   def writeObject(typ: GitObjectType, rawContent: Array[Byte], blockIfExists: Boolean = true): Either[WyagError, String] = {
-    println(typ, StringUtils.bytesToString(typ.toByte))
     val data: Array[Byte] = typ.toByte ++ StringUtils.stringToBytes(s" ${rawContent.length}\0") ++ rawContent
     val sha = {
       val md = java.security.MessageDigest.getInstance("SHA-1")

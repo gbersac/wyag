@@ -66,10 +66,13 @@ object Executor {
         repo <- findRepo
         obj <- CommitObj.store(repo, description)
         _ <- repo.updateHEAD(obj)
-          // 3- update the head reference
-          // 4- handle file mode
-          // don't forget to handle the init commit
       } yield obj.sha1
+
+    case CLICommand.Add(paths) =>
+      for {
+        repo <- findRepo
+        _ <- GitIndex.updateIndex(repo, paths.map(p => repo.worktree / p))
+      } yield "Index updated"
 
   }
 
